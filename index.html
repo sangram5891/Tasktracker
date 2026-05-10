@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compact Task Tracker</title>
+    <style>
+        :root {
+            --primary: #3182ce;
+            --success: #38a169;
+            --danger: #e53e3e;
+            --border: #e2e8f0;
+        }
+
+        body { font-family: system-ui, sans-serif; background: #f7fafc; margin: 0; padding: 10px; }
+        .container { max-width: 600px; margin: auto; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden; }
+        
+        /* Header & Main Add Button */
+        .header { padding: 15px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .btn-add { background: var(--success); color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+
+        /* Compact Rows */
+        .task-row { 
+            padding: 12px; 
+            border-bottom: 1px solid var(--border); 
+            display: flex; 
+            flex-direction: column; 
+            gap: 8px;
+        }
+        .overdue-row { background-color: #fff5f5; border-left: 4px solid var(--danger); }
+
+        /* Top Line: Name and Date */
+        .row-top { display: flex; gap: 8px; justify-content: space-between; }
+        .task-name { flex: 1; font-weight: 600; border: none; border-bottom: 1px dashed #cbd5e0; outline: none; }
+        .date-input { width: 110px; font-size: 12px; border: 1px solid #cbd5e0; border-radius: 4px; padding: 2px; }
+
+        /* Middle Line: Numbers and Bar */
+        .row-mid { display: flex; align-items: center; gap: 8px; }
+        .num-group { display: flex; align-items: center; gap: 4px; font-size: 13px; color: #4a5568; }
+        .num-input { width: 45px; text-align: center; border: 1px solid #cbd5e0; border-radius: 4px; padding: 4px; }
+        
+        .progress-bg { flex: 1; background: #edf2f7; border-radius: 10px; height: 10px; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.3s ease; }
+        .pct-label { font-size: 12px; font-weight: bold; min-width: 35px; text-align: right; }
+
+        /* Bottom Line: Quick Add & Delete */
+        .row-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+        .quick-add-group { display: flex; align-items: center; gap: 5px; }
+        .inc-input { width: 40px; padding: 4px; border-radius: 4px; border: 1px solid #cbd5e0; font-size: 12px; }
+        .btn-plus { background: var(--primary); color: white; border: none; width: 28px; height: 28px; border-radius: 4px; font-weight: bold; }
+        .btn-del { color: var(--danger); background: none; border: none; font-size: 12px; font-weight: bold; text-transform: uppercase; opacity: 0.7; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <div id="overall-pct" style="font-weight: bold; color: var(--primary);">0% Done</div>
+        <button class="btn-add" onclick="addNewRow()">+ Add Task</button>
+    </div>
+    <div id="tableBody"></div>
+</div>
+
+<script>
+    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
+
+    window.onload = () => {
+        const saved = JSON.parse(localStorage.getItem('tasks')) || [];
+        if (saved.length === 0) {
+            for(let i=0; i<3; i++) addNewRow();
+        } else {
+            saved.forEach(data => addNewRow(data));
+        }
+    };
+
+    function addNewRow(data = null) {
+        const container = document.getElementById('tableBody');
+        const row = document.createElement('div');
+        row.className = 'task-row';
+        const today = new Date().toISOString().split('T')[0];
+
+        row.innerHTML = `
+            <div class="row-top">
+                <input type="text" class="task-name" value="${data ? data.name : 'New Task'}" oninput="saveAll()">
+                <input type="date" class="date-input" value="${data ? data.date : today}" oninput="saveAll()">
+            </div>
+            <div class="row-mid">
+                <div class="num-group">
+                    <input type="number" class="num-input comp-val" value="${data ? data.comp : 0}" oninput="saveAll()">
+                    <span>/</span>
+                    <input type="number" class="num-input target-val" value="${data ? data.target : 100}" oninput="saveAll()">
+                </div>
+                <div class="progress-bg"><div class="progress-fill"></div></div>
+                <div class="pct-label">0%</div>
+            </div>
+            <div class="row-bottom">
+                <div class="quick-add-group">
+                    <span style="font-size: 11px; color: #718096;">Add:</span>
+                    <input type="number" class="inc-input" value="10">
+                    <button class="btn-plus" onclick="quickUpdate(this)">+</button>
+                </div>
+                <button class="btn-del" onclick="removeRow(this)">Delete</button>
+            </div>
+        `;
+        container.appendChild(row);
+        calculate(row.querySelector('.comp-val'));
+    }
+
+    function calculate(element) {
+        const row = element.closest('.task-row');
+        const comp = parseFloat(row.querySelector('.comp-val').value) || 0;
+        const target = parseFloat(row.querySelector('.target-val').value) || 1;
+        const dateVal = row.querySelector('.date-input').value;
+        
+        let pct = Math.min(Math.round((comp / target) * 100), 100);
+        row.querySelector('.progress-fill').style.width = pct + '%';
+        row.querySelector('.pct-label').innerText = pct + '%';
+        
+        const isOverdue = new Date(dateVal) < new Date().setHours(0,0,0,0) && pct < 100;
+        row.classList.toggle('overdue-row', isOverdue);
+        row.querySelector('.progress-fill').style.background = (pct >= 100) ? '#38a169' : '#3182ce';
+        updateOverall();
+    }
+
+    function quickUpdate(btn) {
+        const row = btn.closest('.task-row');
+        const compInp = row.querySelector('.comp-val');
+        const inc = parseFloat(row.querySelector('.inc-input').value) || 0;
+        compInp.value = (parseFloat(compInp.value) || 0) + inc;
+        saveAll();
+    }
+
+    function updateOverall() {
+        const pcts = Array.from(document.querySelectorAll('.pct-label')).map(p => parseInt(p.innerText));
+        const avg = pcts.length ? Math.round(pcts.reduce((a,b) => a + b) / pcts.length) : 0;
+        document.getElementById('overall-pct').innerText = avg + '% Complete';
+    }
+
+    function removeRow(btn) {
+        if(confirm("Delete task?")) { btn.closest('.task-row').remove(); saveAll(); }
+    }
+
+    function saveAll() {
+        const tasks = [];
+        document.querySelectorAll('.task-row').forEach(row => {
+            tasks.push({
+                name: row.querySelector('.task-name').value,
+                date: row.querySelector('.date-input').value,
+                comp: row.querySelector('.comp-val').value,
+                target: row.querySelector('.target-val').value
+            });
+            calculate(row.querySelector('.comp-val'));
+        });
+        localStorage.setItem('tasks', JSON.stringify(tasks));
+    }
+</script>
+</body>
+</html>
