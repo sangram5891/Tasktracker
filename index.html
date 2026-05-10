@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Compact Task Tracker</title>
+    <link rel="manifest" href="manifest.json">
+    <style>
+        :root {
+            --primary: #3182ce;
+            --success: #38a169;
+            --danger: #e53e3e;
+            --border: #e2e8f0;
+        }
+
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f7fafc; margin: 0; padding: 8px; }
+        .container { max-width: 900px; margin: auto; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding-bottom: 60px; }
+        
+        h2 { font-size: 1.2rem; padding: 10px; margin: 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+
+        /* Compact Table Logic */
+        .task-list { display: flex; flex-direction: column; }
+        .task-row { 
+            display: grid; 
+            grid-template-columns: 1fr 80px 45px; 
+            grid-template-rows: auto auto;
+            gap: 4px;
+            padding: 8px;
+            border-bottom: 1px solid var(--border);
+            align-items: center;
+        }
+
+        /* Desktop specific grid */
+        @media (min-width: 768px) {
+            .task-row {
+                grid-template-columns: 2fr 120px 80px 80px 1.5fr 100px 40px;
+                grid-template-rows: none;
+            }
+        }
+
+        /* Input styling for density */
+        input { 
+            font-size: 14px; 
+            padding: 4px 6px; 
+            border: 1px solid #cbd5e0; 
+            border-radius: 4px; 
+            width: 100%; 
+            box-sizing: border-box;
+        }
+
+        .task-name { font-weight: 600; grid-column: 1 / 2; }
+        .date-input { grid-column: 2 / 3; font-size: 12px; }
+        .del-btn-cell { grid-column: 3 / 4; text-align: right; }
+
+        /* Progress section on mobile spans full width below the name */
+        .progress-section { 
+            grid-column: 1 / 4; 
+            display: flex; 
+            align-items: center; 
+            gap: 10px;
+            margin-top: 4px;
+        }
+
+        /* Progress Bar */
+        .progress-bg { flex-grow: 1; background: #edf2f7; border-radius: 10px; height: 8px; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--primary); width: 0%; }
+        .pct { font-size: 11px; font-weight: bold; min-width: 30px; }
+
+        /* Floating Add Button for Mobile */
+        .btn-add-float {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--success);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            padding: 12px 24px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            z-index: 100;
+        }
+
+        .overdue-row { background-color: #fff5f5; border-left: 3px solid var(--danger); }
+        
+        /* Hide unnecessary text on mobile */
+        .desktop-label { display: none; }
+        @media (min-width: 768px) { .desktop-label { display: inline; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>
+        Tasks 
+        <span id="overall-pct" style="font-size: 0.9rem; color: var(--primary);">0% Done</span>
+    </h2>
+    <div id="tableBody" class="task-list"></div>
+</div>
+
+<button class="btn-add-float" onclick="addNewRow()">+ Task</button>
+
+<script>
+    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
+
+    window.onload = () => {
+        const saved = JSON.parse(localStorage.getItem('tasks')) || [];
+        if (saved.length === 0) {
+            for(let i=0; i<5; i++) addNewRow();
+        } else {
+            saved.forEach(data => addNewRow(data));
+        }
+    };
+
+    function addNewRow(data = null) {
+        const container = document.getElementById('tableBody');
+        const row = document.createElement('div');
+        row.className = 'task-row';
+        const today = new Date().toISOString().split('T')[0];
+
+        row.innerHTML = `
+            <input type="text" class="task-name" value="${data ? data.name : 'Task ' + (container.children.length + 1)}" oninput="saveAll()">
+            <input type="date" class="date-input" value="${data ? data.date : today}" oninput="saveAll()">
+            <div class="del-btn-cell">
+                <button style="border:none; background:none; color:var(--danger); font-weight:bold;" onclick="removeRow(this)">×</button>
+            </div>
+            <div class="progress-section">
+                <input type="number" class="num-input comp-val" value="${data ? data.comp : 0}" oninput="saveAll()" style="width:50px">
+                <span style="font-size:12px">/</span>
+                <input type="number" class="num-input target-val" value="${data ? data.target : 100}" oninput="saveAll()" style="width:55px">
+                <div class="progress-bg"><div class="progress-fill"></div></div>
+                <span class="pct">0%</span>
+            </div>
+        `;
+        container.appendChild(row);
+        calculate(row.querySelector('.comp-val'));
+    }
+
+    function calculate(element) {
+        const row = element.closest('.task-row');
+        const comp = parseFloat(row.querySelector('.comp-val').value) || 0;
+        const target = parseFloat(row.querySelector('.target-val').value) || 1;
+        const dateVal = row.querySelector('.date-input').value;
+        
+        let pct = Math.min(Math.round((comp / target) * 100), 100);
+        row.querySelector('.progress-fill').style.width = pct + '%';
+        row.querySelector('.pct').innerText = pct + '%';
+        
+        const isOverdue = new Date(dateVal) < new Date().setHours(0,0,0,0) && pct < 100;
+        row.classList.toggle('overdue-row', isOverdue);
+        row.querySelector('.progress-fill').style.background = (pct >= 100) ? '#38a169' : '#3182ce';
+        updateOverall();
+    }
+
+    function updateOverall() {
+        const pcts = Array.from(document.querySelectorAll('.pct')).map(p => parseInt(p.innerText));
+        const avg = pcts.length ? Math.round(pcts.reduce((a,b) => a + b) / pcts.length) : 0;
+        document.getElementById('overall-pct').innerText = avg + '% Overall';
+    }
+
+    function removeRow(btn) {
+        if(confirm("Delete?")) { btn.closest('.task-row').remove(); saveAll(); }
+    }
+
+    function saveAll() {
+        const tasks = [];
+        document.querySelectorAll('.task-row').forEach(row => {
+            tasks.push({
+                name: row.querySelector('.task-name').value,
+                date: row.querySelector('.date-input').value,
+                comp: row.querySelector('.comp-val').value,
+                target: row.querySelector('.target-val').value
+            });
+            calculate(row.querySelector('.comp-val'));
+        });
+        localStorage.setItem('tasks', JSON.stringify(tasks));
+    }
+</script>
+</body>
+</html>
