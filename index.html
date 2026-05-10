@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Tracker - Overdue Highlights</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; }
+        .container { max-width: 1150px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        
+        table { width: 100%; border-collapse: separate; border-spacing: 0 5px; margin-top: 15px; }
+        th { background: #4a5568; color: white; padding: 12px; text-align: left; font-size: 0.9em; }
+        td { background: white; border-top: 1px solid #edf2f7; border-bottom: 1px solid #edf2f7; padding: 10px; transition: all 0.3s ease; }
+        
+        /* Overdue Row Highlight */
+        tr.overdue-row td {
+            background-color: #fff5f5; /* Light red background */
+            border-top: 1px solid #feb2b2;
+            border-bottom: 1px solid #feb2b2;
+        }
+        tr.overdue-row td:first-child { border-left: 4px solid #f56565; }
+
+        input { padding: 6px; border: 1px solid #cbd5e0; border-radius: 4px; box-sizing: border-box; }
+        input[type="text"] { width: 100%; background: transparent; }
+        .num-input { width: 70px; text-align: center; }
+        .date-input { width: 135px; font-size: 0.85em; }
+
+        /* Progress Bar */
+        .progress-bg { width: 100%; background: #e2e8f0; border-radius: 10px; height: 10px; overflow: hidden; margin-top: 5px; }
+        .progress-fill { height: 100%; background: #3182ce; width: 0%; transition: width 0.3s ease; }
+        .percent-text { font-weight: bold; font-size: 0.85em; color: #2d3748; }
+
+        /* Buttons */
+        .btn { padding: 8px 14px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+        .btn-add { background: #38a169; color: white; margin-bottom: 10px; }
+        .btn-plus { background: #3182ce; color: white; }
+        .btn-del { background: #fee2e2; color: #9b2c2c; }
+        .btn-del:hover { background: #f56565; color: white; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Project Roadmap</h2>
+    <button class="btn btn-add" onclick="addNewRow()">+ Add New Task</button>
+
+    <table id="taskTable">
+        <thead>
+            <tr>
+                <th>Task Description</th>
+                <th>Target Date</th>
+                <th style="width: 80px;">Done</th>
+                <th style="width: 80px;">Goal</th>
+                <th style="width: 180px;">Progress Bar</th>
+                <th style="width: 120px;">Quick Add</th>
+                <th style="width: 40px;"></th>
+            </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+</div>
+
+<script>
+    window.onload = () => { for(let i=0; i<10; i++) addNewRow(); };
+
+    function addNewRow() {
+        const tbody = document.getElementById('tableBody');
+        const row = document.createElement('tr');
+        const today = new Date().toISOString().split('T')[0];
+
+        row.innerHTML = `
+            <td><input type="text" placeholder="Task description..." value="Task ${tbody.children.length + 1}"></td>
+            <td><input type="date" class="date-input" value="${today}" oninput="calculate(this)"></td>
+            <td><input type="number" class="num-input comp-val" value="0" oninput="calculate(this)"></td>
+            <td><input type="number" class="num-input target-val" value="100" oninput="calculate(this)"></td>
+            <td>
+                <span class="percent-text">0%</span>
+                <div class="progress-bg"><div class="progress-fill"></div></div>
+            </td>
+            <td>
+                <div style="display:flex; gap:4px;">
+                    <input type="number" class="num-input increment-val" value="10" style="width:45px">
+                    <button class="btn btn-plus" onclick="quickAdd(this)">+</button>
+                </div>
+            </td>
+            <td><button class="btn btn-del" onclick="this.parentElement.parentElement.remove()">×</button></td>
+        `;
+        tbody.appendChild(row);
+        calculate(row.querySelector('.comp-val'));
+    }
+
+    function calculate(element) {
+        const row = element.closest('tr');
+        const completed = parseFloat(row.querySelector('.comp-val').value) || 0;
+        const target = parseFloat(row.querySelector('.target-val').value) || 0;
+        const dateInput = row.querySelector('.date-input');
+        
+        let percentage = 0;
+        if (target > 0) {
+            percentage = Math.min(Math.round((completed / target) * 100), 100);
+        }
+
+        // Update UI elements
+        const fill = row.querySelector('.progress-fill');
+        fill.style.width = percentage + '%';
+        row.querySelector('.percent-text').innerText = percentage + '%';
+        
+        // --- OVERDUE LOGIC ---
+        const targetDate = new Date(dateInput.value);
+        const today = new Date();
+        today.setHours(0,0,0,0); // Reset time to compare only the date
+
+        if (targetDate < today && percentage < 100) {
+            row.classList.add('overdue-row');
+        } else {
+            row.classList.remove('overdue-row');
+        }
+
+        // Color bar green when 100%
+        fill.style.background = (percentage >= 100) ? '#38a169' : '#3182ce';
+    }
+
+    function quickAdd(btn) {
+        const row = btn.closest('tr');
+        const compInput = row.querySelector('.comp-val');
+        const incValue = parseFloat(row.querySelector('.increment-val').value) || 0;
+        compInput.value = (parseFloat(compInput.value) || 0) + incValue;
+        calculate(compInput);
+    }
+</script>
+
+</body>
+</html>
